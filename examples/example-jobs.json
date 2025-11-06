@@ -1,0 +1,243 @@
+{
+  "examples": [
+    {
+      "name": "Simple Email Job",
+      "job": {
+        "name": "Send Welcome Email",
+        "description": "Send welcome email to new user",
+        "type": "EMAIL_NOTIFICATION",
+        "priority": "HIGH",
+        "parameters": {
+          "to": "user@example.com",
+          "subject": "Welcome!",
+          "body": "Welcome to our platform!"
+        },
+        "maxRetries": 3,
+        "retryDelaySeconds": 60
+      }
+    },
+    {
+      "name": "Report Generation Job",
+      "job": {
+        "name": "Generate Monthly Report",
+        "description": "Generate sales report for the month",
+        "type": "REPORT_GENERATION",
+        "priority": "NORMAL",
+        "parameters": {
+          "reportType": "SALES_MONTHLY",
+          "format": "PDF",
+          "startDate": "2025-01-01",
+          "endDate": "2025-01-31"
+        },
+        "maxRetries": 2,
+        "timeoutSeconds": 600
+      }
+    },
+    {
+      "name": "Data Backup Job",
+      "job": {
+        "name": "Backup Database",
+        "description": "Backup production database to S3",
+        "type": "DATA_BACKUP",
+        "priority": "CRITICAL",
+        "parameters": {
+          "source": "/data/production",
+          "destination": "s3://backups/db/2025-01"
+        },
+        "maxRetries": 1,
+        "timeoutSeconds": 3600
+      }
+    },
+    {
+      "name": "Data Processing Job",
+      "job": {
+        "name": "Process User Analytics",
+        "description": "Process user activity data",
+        "type": "DATA_PROCESSING",
+        "priority": "NORMAL",
+        "parameters": {
+          "dataSource": "/data/analytics/raw",
+          "operation": "AGGREGATE",
+          "outputPath": "/data/analytics/processed"
+        },
+        "maxRetries": 3,
+        "timeoutSeconds": 1800
+      }
+    },
+    {
+      "name": "Cron Job - Daily Backup",
+      "job": {
+        "name": "Daily Database Backup",
+        "description": "Backup database every day at 2 AM",
+        "type": "DATA_BACKUP",
+        "cronExpression": "0 0 2 * * ?",
+        "priority": "HIGH",
+        "parameters": {
+          "source": "/data/production",
+          "destination": "/backups/daily"
+        }
+      }
+    },
+    {
+      "name": "Cron Job - Hourly Cleanup",
+      "job": {
+        "name": "Hourly Temp Cleanup",
+        "description": "Clean temporary files every hour",
+        "type": "DATA_PROCESSING",
+        "cronExpression": "0 0 * * * ?",
+        "priority": "LOW",
+        "parameters": {
+          "dataSource": "/tmp",
+          "operation": "CLEANUP"
+        }
+      }
+    },
+    {
+      "name": "Scheduled Job",
+      "job": {
+        "name": "One-Time Report",
+        "description": "Generate report at specific time",
+        "type": "REPORT_GENERATION",
+        "scheduledAt": "2025-01-20 15:00:00",
+        "priority": "NORMAL",
+        "parameters": {
+          "reportType": "QUARTERLY_SUMMARY",
+          "format": "PDF"
+        }
+      }
+    },
+    {
+      "name": "Job with Dependencies (DAG) - Step 1",
+      "job": {
+        "name": "ETL Extract",
+        "description": "Extract data from source",
+        "type": "DATA_PROCESSING",
+        "priority": "HIGH",
+        "parameters": {
+          "dataSource": "/raw-data",
+          "operation": "EXTRACT"
+        }
+      },
+      "note": "Save the job ID for use in next step"
+    },
+    {
+      "name": "Job with Dependencies (DAG) - Step 2",
+      "job": {
+        "name": "ETL Transform",
+        "description": "Transform extracted data",
+        "type": "DATA_PROCESSING",
+        "priority": "HIGH",
+        "dependencies": ["<EXTRACT_JOB_ID>"],
+        "parameters": {
+          "dataSource": "/extracted-data",
+          "operation": "TRANSFORM"
+        }
+      },
+      "note": "Replace <EXTRACT_JOB_ID> with actual ID from Step 1"
+    },
+    {
+      "name": "Job with Dependencies (DAG) - Step 3",
+      "job": {
+        "name": "ETL Load",
+        "description": "Load transformed data",
+        "type": "DATA_PROCESSING",
+        "priority": "HIGH",
+        "dependencies": ["<TRANSFORM_JOB_ID>"],
+        "parameters": {
+          "dataSource": "/transformed-data",
+          "operation": "LOAD"
+        }
+      },
+      "note": "Replace <TRANSFORM_JOB_ID> with actual ID from Step 2"
+    },
+    {
+      "name": "Complex DAG - Parallel Processing",
+      "description": "Job A runs first, then B and C run in parallel, then D waits for both B and C",
+      "jobs": [
+        {
+          "name": "Job A - Data Collection",
+          "type": "DATA_PROCESSING",
+          "parameters": {
+            "operation": "COLLECT"
+          }
+        },
+        {
+          "name": "Job B - Analysis Path 1",
+          "type": "DATA_PROCESSING",
+          "dependencies": ["<JOB_A_ID>"],
+          "parameters": {
+            "operation": "ANALYZE_PATH_1"
+          }
+        },
+        {
+          "name": "Job C - Analysis Path 2",
+          "type": "DATA_PROCESSING",
+          "dependencies": ["<JOB_A_ID>"],
+          "parameters": {
+            "operation": "ANALYZE_PATH_2"
+          }
+        },
+        {
+          "name": "Job D - Merge Results",
+          "type": "DATA_PROCESSING",
+          "dependencies": ["<JOB_B_ID>", "<JOB_C_ID>"],
+          "parameters": {
+            "operation": "MERGE"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Multi-Step Workflow",
+      "description": "Complete workflow: Data ingestion -> Processing -> Report -> Email",
+      "jobs": [
+        {
+          "name": "Ingest Data",
+          "type": "DATA_PROCESSING",
+          "parameters": {
+            "dataSource": "/incoming",
+            "operation": "INGEST"
+          }
+        },
+        {
+          "name": "Process Data",
+          "type": "DATA_PROCESSING",
+          "dependencies": ["<INGEST_JOB_ID>"],
+          "parameters": {
+            "dataSource": "/ingested",
+            "operation": "PROCESS"
+          }
+        },
+        {
+          "name": "Generate Report",
+          "type": "REPORT_GENERATION",
+          "dependencies": ["<PROCESS_JOB_ID>"],
+          "parameters": {
+            "reportType": "PROCESSING_SUMMARY",
+            "format": "PDF"
+          }
+        },
+        {
+          "name": "Email Report",
+          "type": "EMAIL_NOTIFICATION",
+          "dependencies": ["<REPORT_JOB_ID>"],
+          "parameters": {
+            "to": "manager@example.com",
+            "subject": "Processing Complete",
+            "body": "Data processing completed. Report attached."
+          }
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "create": "POST /api/v1/jobs",
+    "execute": "POST /api/v1/jobs/{jobId}/execute",
+    "list": "GET /api/v1/jobs",
+    "get": "GET /api/v1/jobs/{jobId}",
+    "history": "GET /api/v1/jobs/{jobId}/history",
+    "execution": "GET /api/v1/jobs/executions/{executionId}",
+    "cancel": "POST /api/v1/jobs/executions/{executionId}/cancel",
+    "delete": "DELETE /api/v1/jobs/{jobId}"
+  }
+}

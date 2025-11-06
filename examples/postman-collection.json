@@ -1,0 +1,223 @@
+{
+  "info": {
+    "name": "Distributed Job Scheduler API",
+    "description": "Complete API collection for the Distributed Job Scheduler",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Jobs",
+      "item": [
+        {
+          "name": "Create Email Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Send Welcome Email\",\n  \"description\": \"Send welcome email to new user\",\n  \"type\": \"EMAIL_NOTIFICATION\",\n  \"priority\": \"HIGH\",\n  \"parameters\": {\n    \"to\": \"user@example.com\",\n    \"subject\": \"Welcome!\",\n    \"body\": \"Welcome to our platform!\"\n  },\n  \"maxRetries\": 3,\n  \"retryDelaySeconds\": 60,\n  \"timeoutSeconds\": 300\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Create Report Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Monthly Sales Report\",\n  \"description\": \"Generate monthly sales report\",\n  \"type\": \"REPORT_GENERATION\",\n  \"priority\": \"NORMAL\",\n  \"parameters\": {\n    \"reportType\": \"SALES_MONTHLY\",\n    \"format\": \"PDF\",\n    \"month\": \"2025-01\"\n  },\n  \"maxRetries\": 2,\n  \"timeoutSeconds\": 600\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Create Cron Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Daily Backup\",\n  \"description\": \"Backup database daily at 2 AM\",\n  \"type\": \"DATA_BACKUP\",\n  \"cronExpression\": \"0 0 2 * * ?\",\n  \"priority\": \"HIGH\",\n  \"parameters\": {\n    \"source\": \"/data/production\",\n    \"destination\": \"/backups/daily\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "List Jobs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs?page=0&size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Job By ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs", "{{job_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Job",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs", "{{job_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Executions",
+      "item": [
+        {
+          "name": "Execute Job",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs/{{job_id}}/execute",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs", "{{job_id}}", "execute"]
+            }
+          }
+        },
+        {
+          "name": "Get Job History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs/{{job_id}}/history?page=0&size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs", "{{job_id}}", "history"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Execution Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs/executions/{{execution_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs", "executions", "{{execution_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Execution",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs/executions/{{execution_id}}/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs", "executions", "{{execution_id}}", "cancel"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Monitoring",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/actuator/health",
+              "host": ["{{base_url}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
+          "name": "Prometheus Metrics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/actuator/prometheus",
+              "host": ["{{base_url}}"],
+              "path": ["actuator", "prometheus"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "execution_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

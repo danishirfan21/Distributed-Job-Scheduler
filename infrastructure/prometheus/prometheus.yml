@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'job-scheduler-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['job-scheduler-service:8081']
+        labels:
+          service: 'scheduler'
+
+  - job_name: 'job-worker-1'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['job-worker-1:8082']
+        labels:
+          service: 'worker'
+          worker_id: 'worker-1'
+
+  - job_name: 'job-worker-2'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['job-worker-2:8083']
+        labels:
+          service: 'worker'
+          worker_id: 'worker-2'

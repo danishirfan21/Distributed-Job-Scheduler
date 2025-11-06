@@ -1,0 +1,107 @@
+{
+  "dashboard": {
+    "title": "Distributed Job Scheduler Dashboard",
+    "tags": ["job-scheduler"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Jobs Created (Rate)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(jobs_created_total[5m])",
+            "legendFormat": "{{type}}"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Jobs Dispatched (Rate)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(jobs_dispatched_total[5m])",
+            "legendFormat": "{{type}}"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Jobs Completed (Rate)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(jobs_completed_total[5m])",
+            "legendFormat": "{{type}} - {{worker_id}}"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Jobs Failed (Rate)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(jobs_failed_total[5m])",
+            "legendFormat": "{{type}} - {{worker_id}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Job Execution Time (p95)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(job_execution_time_seconds_bucket[5m]))",
+            "legendFormat": "{{type}} - {{status}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Active Workers",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 16, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "count(up{job=~\"job-worker.*\"} == 1)"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Total Jobs Created",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 16, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(jobs_created_total)"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Success Rate",
+        "type": "gauge",
+        "gridPos": {"x": 12, "y": 20, "w": 12, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(rate(jobs_completed_total[5m])) / (sum(rate(jobs_completed_total[5m])) + sum(rate(jobs_failed_total[5m]))) * 100"
+          }
+        ]
+      }
+    ],
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}
