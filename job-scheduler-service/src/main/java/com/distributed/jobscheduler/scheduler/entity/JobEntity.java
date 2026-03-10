@@ -76,6 +76,7 @@ public class JobEntity {
     private List<String> tags;
 
     @Column(nullable = false)
+    @Builder.Default
     private Boolean enabled = true;
 
     @Column(name = "created_by")

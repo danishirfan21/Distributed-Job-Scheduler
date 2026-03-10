@@ -58,19 +58,24 @@ public class DAGValidationService {
     public List<String> getTopologicalOrder(Collection<JobEntity> jobs) {
         Map<String, JobEntity> jobMap = new HashMap<>();
         Map<String, Integer> inDegree = new HashMap<>();
+        Map<String, List<String>> adj = new HashMap<>();
 
-        // Build graph
+        // Initialize structures
         for (JobEntity job : jobs) {
-            jobMap.put(job.getId(), job);
-            inDegree.put(job.getId(), 0);
+            String id = job.getId();
+            jobMap.put(id, job);
+            inDegree.put(id, 0);
+            adj.put(id, new ArrayList<>());
         }
 
-        // Calculate in-degrees
+        // Build adjacency list (dep -> dependents) and calculate in-degrees
         for (JobEntity job : jobs) {
             if (job.getDependencies() != null) {
                 for (String depId : job.getDependencies()) {
-                    inDegree.merge(depId, 0, Integer::sum);
-                    inDegree.merge(job.getId(), 1, Integer::sum);
+                    if (jobMap.containsKey(depId)) {
+                        adj.get(depId).add(job.getId());
+                        inDegree.put(job.getId(), inDegree.get(job.getId()) + 1);
+                    }
                 }
             }
         }
@@ -88,13 +93,10 @@ public class DAGValidationService {
             String jobId = queue.poll();
             result.add(jobId);
 
-            JobEntity job = jobMap.get(jobId);
-            if (job != null && job.getDependencies() != null) {
-                for (String depId : job.getDependencies()) {
-                    inDegree.merge(depId, -1, Integer::sum);
-                    if (inDegree.get(depId) == 0) {
-                        queue.offer(depId);
-                    }
+            for (String neighborId : adj.get(jobId)) {
+                inDegree.put(neighborId, inDegree.get(neighborId) - 1);
+                if (inDegree.get(neighborId) == 0) {
+                    queue.offer(neighborId);
                 }
             }
         }
