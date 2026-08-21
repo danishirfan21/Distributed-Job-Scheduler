@@ -100,16 +100,16 @@ A local demonstration of a distributed job scheduling system built with Spring B
 - ✅ Graceful degradation
 
 #### Security
-- ✅ OAuth2/JWT authentication
-- ✅ Resource server configuration
-- ✅ User context tracking
-- ✅ API endpoint protection
+- ❌ Not implemented. `/api/**` is open with no authentication - see
+  [README.md "Security"](README.md#security) and
+  [Known Limitations](README.md#known-limitations) for why and what adding real OAuth2
+  would take.
 
 #### Observability
 - ✅ Prometheus metrics integration
-- ✅ Grafana dashboard with 8+ visualizations
+- ✅ Grafana dashboard with 9 panels
 - ✅ Actuator health endpoints
-- ✅ Structured logging with correlation IDs
+- ✅ Standard Spring Boot request logging (no correlation-ID/MDC tracing implemented)
 - ✅ Performance metrics (rates, percentiles, gauges)
 
 ### 4. Testing
@@ -245,8 +245,8 @@ distributed-job-scheduler/
 ├── QUICKSTART.md                    # Quick Start Guide
 └── .gitignore
 
-Total Files: 60+
-Total Lines of Code: ~8,000+
+Total Files: ~80
+Total Lines (Java + YAML/XML/SQL/JSON/Markdown): ~7,400
 ```
 
 ## Technology Stack Summary
@@ -268,21 +268,22 @@ Total Lines of Code: ~8,000+
 
 - **Services:** 2 (Scheduler + Worker)
 - **Modules:** 3 (Common + 2 Services)
-- **REST Endpoints:** 10+
+- **REST Endpoints:** 8
 - **Job Types:** 6 (5 built-in + Custom)
 - **Database Tables:** 4
 - **Kafka Topics:** 3
-- **Unit Tests:** 15+
-- **Integration Tests:** 5+
-- **Prometheus Metrics:** 10+
-- **Grafana Panels:** 8+
+- **Unit/Component Tests:** 23 (`mvn test`)
+- **Integration Tests:** 2 (Testcontainers, `mvn verify`)
+- **Custom Prometheus Metrics:** 5 (`jobs.created`, `jobs.dispatched`, `jobs.completed`,
+  `jobs.failed`, `job.execution.time`) plus standard JVM/HTTP metrics from Micrometer
+- **Grafana Panels:** 9
 
 ## How to Use
 
 ### Quick Start (5 minutes)
 ```bash
 # Start everything
-docker-compose up -d
+docker compose up -d
 
 # Create a job
 curl -X POST http://localhost:8081/api/v1/jobs \
@@ -302,25 +303,33 @@ open http://localhost:3000
 
 See [QUICKSTART.md](QUICKSTART.md) for detailed instructions.
 
-## Production Readiness Checklist
+## What's Implemented vs. What Isn't
 
-### ✅ Implemented
+This is not a production-readiness checklist - see the Conclusion below and
+[README.md "Known Limitations"](README.md#known-limitations) for why. It's a plain list of
+what's actually built.
+
+### Implemented and verified in CI
 - Multi-threaded execution
-- Distributed coordination (Redis locks)
+- Distributed coordination (Redis locks + dedup)
 - Asynchronous processing (Kafka)
 - Persistent storage (PostgreSQL)
-- Monitoring and alerting (Prometheus/Grafana)
-- Comprehensive testing (Unit + Integration)
-- Security (OAuth2/JWT)
-- Fault tolerance (retries, graceful shutdown)
-- Horizontal scalability (multiple workers)
-- Documentation (README, Architecture, Quick Start)
+- Monitoring (Prometheus/Grafana; Grafana rendering itself is not CI-tested)
+- Automated testing (unit + Testcontainers integration, `.github/workflows/verify.yml`)
+- Fault tolerance (retries, graceful shutdown, duplicate-execution protection)
+- Horizontal scalability (multiple workers on a shared Kafka consumer group)
+- Documentation (README, Architecture, Quick Start, Verification Report)
 - Examples and tools (API scripts, Postman collection)
 - Containerization (Docker, Docker Compose)
+- CI/CD (GitHub Actions - build, unit tests, Testcontainers integration tests, and a full
+  `docker compose up --build` end-to-end run, on every push/PR)
 
-### 🔄 Optional Enhancements
-- Kubernetes deployment manifests
-- CI/CD pipelines (GitHub Actions, Jenkins)
+### Deliberately not implemented (see Known Limitations for why)
+- Authentication (no OAuth2/JWT, no identity provider)
+- Real email/SMTP, real backup I/O (executors are simulated)
+- Kubernetes manifests
+
+### Genuinely optional future work
 - Centralized logging (ELK Stack, Loki)
 - Distributed tracing (Jaeger, Zipkin)
 - Job artifacts storage (S3, MinIO)
@@ -328,20 +337,22 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed instructions.
 - Web UI for job management
 - Multi-tenancy support
 - Job templates
+- Load/sustained-rebalance testing (see Known Limitations)
 
 ## Performance Characteristics
 
-### Throughput
-- **Single Worker:** ~10 concurrent jobs
-- **Multiple Workers:** Linear scaling (10 * N workers)
-- **Kafka Partitions:** 10 (can be increased)
+No load testing or benchmarking has been done against this system - see
+[Known Limitations](README.md#known-limitations). The numbers below describe *configured
+capacity*, not measured throughput or latency:
 
-### Latency
-- **Job Creation:** < 50ms
-- **Job Dispatching:** < 100ms
-- **Execution Start:** < 500ms (depends on worker availability)
+- **Concurrent jobs per worker instance:** 10 (`worker.max-concurrent-jobs`, configurable)
+- **Kafka partitions per topic:** 10 (`KafkaConfig`, configurable)
+- Adding worker instances increases total concurrent-job capacity roughly linearly, up to
+  the partition count of `job-dispatch` - beyond that, extra workers in the same consumer
+  group simply sit idle for that topic.
 
 ### Scalability
+
 - **Horizontal:** Add more workers (recommended)
 - **Vertical:** Increase thread pool size per worker
 - **Database:** Connection pool tuning, read replicas
@@ -355,7 +366,8 @@ This project demonstrates:
 3. **Distributed Systems:** Locking, coordination, fault tolerance
 4. **Database Design:** Normalized schema, indexing, migrations
 5. **API Design:** RESTful APIs with proper HTTP semantics
-6. **Security:** OAuth2/JWT implementation
+6. **Security tradeoffs:** what a REST API needs for real authentication, and why this
+   demo deliberately ships without it (see Known Limitations)
 7. **Testing:** Unit, integration, and mocking strategies
 8. **Monitoring:** Metrics, dashboards, observability
 9. **Containerization:** Docker multi-stage builds, Docker Compose
