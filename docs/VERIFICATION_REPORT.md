@@ -117,51 +117,94 @@ Final unit test breakdown (`mvn clean test`, ~30s total):
 | `JobExecutionServiceTest` | 3 | PASS |
 | **Total** | **23** | **PASS** |
 
-`docker compose config`, `docker compose up --build`, `mvn verify` (the Testcontainers
-IT tests), and `scripts/verify.sh`'s Docker-dependent steps were **not** runtime-verified
-in this environment - see Section 4.
+The Docker-dependent paths (`docker compose up --build`, `mvn verify`'s Testcontainers
+tests, `scripts/verify.sh`) could not be exercised in the sandboxed environment this audit
+was performed in (no Docker daemon, and a GitHub Codespace attempted as a workaround
+turned out to run in a restricted container that couldn't grant Docker the network
+capabilities it needs either). They were instead verified via a GitHub Actions workflow
+([`.github/workflows/verify.yml`](../.github/workflows/verify.yml)) added specifically for
+this purpose, since GitHub-hosted runners have an unrestricted Docker daemon. See Section 4.
 
-## 4. What Was Verified vs. What Remains Unverified
+## 4. What Was Verified
 
-### Verified in this environment
+### Verified locally in this environment
 - Maven reactor build (all 3 modules) compiles cleanly on Java 17.
-- All 23 unit/H2-backed tests pass.
-- The new Testcontainers `*IT.java` classes compile against the real Testcontainers/Kafka
-  client APIs (`mvn test-compile`), and are correctly excluded from `mvn test` by Failsafe
-  naming convention (`*IT.java`), confirmed by re-running `mvn test` after adding them and
-  observing the same 23 tests, not more.
-- Static review of `docker-compose.yml`, both `Dockerfile`s, `application.yml`s,
-  `prometheus.yml`, and the Grafana dashboard/datasource/provisioning JSON/YAML for
-  hostname consistency (service names match Spring `*_HOST` env vars and Prometheus
-  scrape targets), port consistency, and Kafka `KAFKA_ADVERTISED_LISTENERS` correctness
-  for container-to-container vs. host access.
+- All 23 unit/H2-backed tests pass (`mvn clean test`).
+- The Testcontainers `*IT.java` classes compile against the real Testcontainers/Kafka
+  client APIs and are correctly excluded from `mvn test` by Failsafe naming convention.
+- Each Dockerfile's exact multi-stage `COPY` set was reproduced by hand in a clean temp
+  directory and built with the same `mvn -pl <module> -am package` command Docker runs,
+  confirming the Maven reactor resolves correctly for both images (this is how the
+  Dockerfile bug described below was first caught and fixed, ahead of the first CI run).
 
-### NOT verified (no Docker daemon available in this environment)
-- `docker compose up --build` actually starting all 8 services and reaching healthy.
-- The full container-networked flow: REST API → Postgres persistence → Kafka dispatch →
-  worker consumption → job execution → status update → Postgres persistence as
-  `COMPLETED`, running across real containers.
-- `mvn verify` (the Testcontainers integration tests) actually passing against live
-  containers - they are known to *compile and be structured correctly against the real
-  Testcontainers/Kafka APIs*, but starting containers requires a Docker daemon this
-  environment does not have.
-- `scripts/verify.sh` end-to-end (its build/test steps were smoke-tested with
-  `--skip-docker`; the Docker-dependent steps were not).
-- Prometheus actually scraping both services and Grafana rendering the dashboard against
-  live data.
-- Kafka partition rebalancing / duplicate-delivery behavior under real broker conditions
-  (the Redis dedup logic added in fix #4 is unit-tested with mocks, but its real-world
-  effectiveness against an actual rebalance is only exercised by `WorkerConsumeAndExecuteIT`,
-  which itself is unverified for the reason above).
+### Verified on GitHub Actions (real Docker daemon, `.github/workflows/verify.yml`)
+Four CI runs were needed to reach a fully green state - each failure was a real bug this
+review had not caught statically, not an infrastructure fluke. In order:
 
-**Recommendation:** before relying on this as "known-good," run, on a machine with Docker
-(or in a GitHub Codespace via the included [`.devcontainer`](../.devcontainer/devcontainer.json),
-which provisions Docker-in-Docker for exactly this purpose):
+1. **Run 1** ([`4cac114`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/4cac114)-era workflow): `docker compose up --build` failed immediately for both
+   images with `Child module .../pom.xml does not exist`. Both Dockerfiles only `COPY`ed
+   their own module's `pom.xml` plus `job-common`, but the root `pom.xml` lists all 3
+   modules - Maven's reactor needs every listed module's `pom.xml` present just to parse,
+   regardless of which modules are actually being built. **Fixed** in
+   [`a6e780a`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/a6e780a)
+   by copying the third module's `pom.xml` (not its `src`) into each image.
+2. Same run: the Testcontainers IT tests failed - `SchedulerEndToEndIT` and
+   `WorkerConsumeAndExecuteIT` published raw JSON via a plain `StringSerializer` producer
+   to simulate the real services, but the real consumers use Spring's `JsonDeserializer`,
+   which needs a `__TypeId__` header (normally added automatically by Spring's
+   `JsonSerializer`) to know what class to deserialize into. Every message was a poison
+   pill the consumer retried forever. **Fixed** in the same commit by adding the header
+   manually in both tests.
+3. **Run 2**: Maven/Docker issues resolved; unit tests and integration tests (Testcontainers)
+   now passed. But `end-to-end` still failed: `job-worker-1`/`job-worker-2` both timed out
+   waiting for `/actuator/health` (180s each) despite starting in ~9s and later processing
+   the dispatched job correctly (RUNNING → COMPLETED in 10s, persisted in real Postgres -
+   the actual distributed flow already worked at this point). Hypothesized cause: the
+   auto-configured Kafka health indicator blocking on broker admin calls during cluster
+   startup. **Attempted fix** in
+   [`6046e19`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/6046e19):
+   `management.health.kafka.enabled=false`.
+4. **Run 3**: identical failure, proving the Kafka hypothesis wrong. Checked the raw worker
+   container logs directly and found the real cause: `job-worker-service/pom.xml` never
+   had `spring-boot-starter-web` - only `spring-boot-starter` + `spring-boot-starter-actuator`.
+   Without a web starter there is no embedded servlet container at all, so Actuator's HTTP
+   endpoints had no web layer to attach to; `/actuator/health` and `/actuator/prometheus`
+   were not slow, they were completely nonexistent. **Fixed** in
+   [`22a0fee`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/22a0fee)
+   by adding `spring-boot-starter-web`.
+5. **Run 4**: `/actuator/prometheus` now responded correctly, but `/actuator/health` still
+   failed for the full 180s - this time *not* transiently. The raw logs showed
+   `jakarta.mail.AuthenticationFailedException` repeating continuously: with
+   `spring-boot-starter-web` now present, Actuator's mail health indicator started making a
+   real SMTP handshake against `smtp.gmail.com` (the configured default host, no
+   credentials) on every single health check, and since `EmailNotificationExecutor`
+   deliberately never sends real email (see "Known Limitations" in the README), this
+   indicator was permanently broken, not flaky. **Fixed** in
+   [`308d01a`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/308d01a):
+   `management.health.mail.enabled=false`.
+6. **Run 5** ([`32519006790`](https://github.com/danishirfan21/Distributed-Job-Scheduler/actions/runs/32519006790)):
+   all three jobs (`unit-tests`, `integration-tests`, `end-to-end`) passed. This is the
+   first run that genuinely proves, on a real Docker daemon: `docker compose up --build`
+   brings up all 8 services; `POST /api/v1/jobs` creates a job; `POST .../execute`
+   dispatches it to a real Kafka topic; a real worker consumes it, executes it, and reports
+   status back over Kafka; the scheduler persists the final state as `COMPLETED` in real
+   PostgreSQL; and both services' `/actuator/prometheus` endpoints return real metrics.
+
+### Still not independently reproduced outside CI
+- Grafana actually rendering the dashboard against live data (no step in `verify.sh`
+  checks Grafana specifically - Prometheus scraping both services was confirmed instead).
+- Kafka partition-rebalance / duplicate-delivery behavior under sustained load (the Redis
+  dedup logic is unit-tested with mocks and exercised once by `WorkerConsumeAndExecuteIT`,
+  but not stress-tested against a real rebalance storm).
+
+**To reproduce locally** on a machine with a working Docker daemon:
 ```bash
 mvn verify
 docker compose up --build -d
 ./scripts/verify.sh --skip-build
 ```
+Or push to a fork/branch and let `.github/workflows/verify.yml` run on GitHub's own
+Docker-enabled runners.
 
 ## 5. Files Changed
 
@@ -172,16 +215,24 @@ docker compose up --build -d
 - `job-scheduler-service/src/main/resources/application.yml`
 - `job-scheduler-service/src/test/resources/application-test.yml`
 - `job-scheduler-service/src/test/java/.../SchedulerEndToEndIT.java` (new)
+- `job-scheduler-service/Dockerfile` (CI-discovered fix: missing sibling module pom.xml)
 - `job-worker-service/src/main/java/.../service/JobExecutionService.java`
 - `job-worker-service/src/main/java/.../consumer/JobRetryConsumer.java`
-- `job-worker-service/src/main/resources/application.yml`
-- `job-worker-service/pom.xml`
+- `job-worker-service/src/main/resources/application.yml` (CI-discovered fixes: mail/kafka
+  health indicators)
+- `job-worker-service/pom.xml` (CI-discovered fix: missing spring-boot-starter-web)
+- `job-worker-service/Dockerfile` (CI-discovered fix: missing sibling module pom.xml)
 - `job-worker-service/src/test/java/.../JobExecutionServiceTest.java` (new)
 - `job-worker-service/src/test/java/.../JobRetryConsumerTest.java` (new)
-- `job-worker-service/src/test/java/.../WorkerConsumeAndExecuteIT.java` (new)
+- `job-worker-service/src/test/java/.../WorkerConsumeAndExecuteIT.java` (new; CI-discovered
+  fix: missing `__TypeId__` Kafka header)
 - `job-common/src/main/java/.../constants/RedisKeys.java`
 - `pom.xml`
 - `docker-compose.yml`
-- `scripts/verify.sh` (new)
+- `scripts/verify.sh` (new; CI-discovered fix: worker Prometheus check assumed worker-1
+  specifically would process the job)
+- `.github/workflows/verify.yml` (new - runs unit tests, Testcontainers integration tests,
+  and the full docker-compose end-to-end flow on every push/PR, using GitHub's Docker-
+  enabled runners since this environment has none)
 - `README.md`, `QUICKSTART.md`, `ARCHITECTURE.md`, `PROJECT_SUMMARY.md`
 - `docs/VERIFICATION_REPORT.md` (this file, new)

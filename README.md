@@ -42,21 +42,18 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 - Java 17 (for local development)
 - Maven 3.9+ (for local development)
 
-### No Docker on your machine? Use GitHub Codespaces
+### No Docker on your machine?
 
-This repo includes a [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
-(Java 17 + Docker-in-Docker). Open the repo in a Codespace (GitHub → **Code** →
-**Codespaces** → **Create codespace on main**), wait for it to build, then in the
-Codespace terminal:
+GitHub Codespaces is the obvious thing to reach for, but in practice its container is not
+guaranteed to grant Docker the network capabilities (`iptables`/`nftables`) it needs to run
+its own daemon - this varies by account/org policy and isn't something a `.devcontainer`
+config can force. If you hit `Permission denied (you must be root)` from `iptables` when
+trying to start `dockerd` inside a Codespace, that's this limitation, not a fixable bug.
 
-```bash
-./scripts/verify.sh
-```
-
-This gets you a real Docker daemon and runs the full build → `docker compose up --build`
-→ create job → execute → poll until `COMPLETED` flow end-to-end, with all output visible
-in the terminal - useful if you want to paste the results back for review, the way you
-would with any other project that needs Docker but your local machine doesn't have it.
+The reliable option: [`.github/workflows/verify.yml`](.github/workflows/verify.yml) runs
+the full `mvn verify` (Testcontainers) and `scripts/verify.sh` (docker compose) suites on
+every push/PR using GitHub's own Docker-enabled runners. Push to a fork or branch and check
+the **Actions** tab - no local Docker required.
 
 ### Running with Docker Compose
 
