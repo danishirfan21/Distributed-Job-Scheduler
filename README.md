@@ -10,8 +10,7 @@ A highly scalable, fault-tolerant distributed job scheduling system built with S
 - **Retry Logic:** Automatic retry with exponential backoff
 - **Distributed Locking:** Redis-based locking to prevent duplicate execution
 - **Multi-threaded Execution:** Parallel job execution using Java ExecutorService
-- **REST API:** Comprehensive APIs for job management
-- **OAuth2 Authentication:** Secure access with JWT tokens
+- **REST API:** Comprehensive APIs for job management (no authentication in this local demo - see [Known Limitations](#known-limitations))
 - **Monitoring:** Prometheus metrics with Grafana dashboards
 - **Fault Tolerance:** Graceful handling of component failures
 
@@ -53,7 +52,7 @@ cd distributed-job-scheduler
 
 2. **Start all services:**
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This will start:
@@ -92,7 +91,7 @@ mvn clean install
 
 2. **Start infrastructure:**
 ```bash
-docker-compose up -d postgres redis kafka zookeeper
+docker compose up -d postgres redis kafka zookeeper
 ```
 
 3. **Run Scheduler Service:**
@@ -247,16 +246,38 @@ public class MyCustomExecutor implements JobExecutor {
 ```bash
 mvn test
 ```
+Fast, no external services required. Covers DAG validation, job creation/dispatch
+logic, retry backoff calculation, worker execution logic, and Redis-based duplicate
+delivery protection (all infra is mocked).
 
-### Integration Tests
+### Integration Tests (require Docker)
 ```bash
 mvn verify
 ```
+Runs `*IT.java` classes via the Failsafe plugin, in addition to the unit tests above.
+These use [Testcontainers](https://testcontainers.com/) to start real PostgreSQL, Kafka,
+and Redis containers and prove the actual distributed flow works:
+- `SchedulerEndToEndIT` (job-scheduler-service): creates a job over the real REST API,
+  executes it, verifies the message lands on the real `job-dispatch` Kafka topic, then
+  simulates the worker's status reports and polls until the execution is persisted as
+  `COMPLETED` in real PostgreSQL.
+- `WorkerConsumeAndExecuteIT` (job-worker-service): publishes a job dispatch message to a
+  real Kafka topic and verifies job-worker-service's own `@KafkaListener` consumes it, runs
+  it through the real `JobExecutor`, and reports `RUNNING` then `COMPLETED` back to Kafka.
 
-### Test Coverage
+`mvn verify` requires a working Docker daemon on the machine running it - Testcontainers
+will fail fast with a clear error if one isn't available.
+
+### End-to-End Verification Script
 ```bash
-mvn jacoco:report
+./scripts/verify.sh
 ```
+Builds the project, brings up `docker compose`, waits for every service's health
+endpoint, creates a real job through the REST API, executes it, and polls until the
+worker has reported it `COMPLETED` - then double-checks the row directly in PostgreSQL
+and confirms Prometheus metrics are populated. Exits non-zero on any failure. Pass
+`--skip-build` or `--skip-docker` to reuse an already-built/-running stack, or `--keep-up`
+to leave the containers running afterward for manual poking.
 
 ## Monitoring
 
@@ -289,11 +310,20 @@ Key metrics:
 
 #### Add More Workers
 
+`docker-compose.yml` defines two fixed worker instances (`job-worker-1`, `job-worker-2`)
+each with its own `container_name` and host port mapping, so `docker compose up --scale`
+does **not** work against this file as-is (there is no service literally named
+`job-worker-service`, and Compose can't bind the same host port twice). To add a third
+worker, either copy the `job-worker-2` block to a `job-worker-3` block with a new host
+port, or remove `container_name`/fixed `ports` from a worker service and then:
+
 ```bash
-docker-compose up -d --scale job-worker-service=5
+docker compose up -d --scale job-worker-1=5
 ```
 
-This adds more worker instances to increase job processing throughput.
+More worker consumers in the same `job-worker-group` consumer group increase job
+processing throughput, up to the number of `job-dispatch` partitions (10, see
+`KafkaConfig`).
 
 #### Increase Kafka Partitions
 
@@ -434,25 +464,47 @@ docker ps | grep postgres
 
 ## Security
 
-### OAuth2 Configuration
+The REST API has **no authentication enabled** in this repository. `SecurityConfig` in
+`job-scheduler-service` permits all requests. This is a deliberate simplification, not an
+oversight: there is no identity provider (Keycloak, Auth0, etc.) anywhere in
+`docker-compose.yml`, so wiring up `spring-boot-starter-oauth2-resource-server` against a
+JWT issuer that doesn't exist would make the API unusable out of the box - every request
+would 401. See [Known Limitations](#known-limitations).
 
-Update `application.yml`:
-```yaml
-spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: https://your-auth-server.com
-          jwk-set-uri: https://your-auth-server.com/.well-known/jwks.json
-```
+To add real authentication before deploying this anywhere reachable by untrusted clients:
+1. Stand up an OAuth2/OIDC provider (e.g. Keycloak) and add it to `docker-compose.yml`.
+2. Add back `spring-boot-starter-oauth2-resource-server` to `job-scheduler-service/pom.xml`.
+3. Configure `spring.security.oauth2.resourceserver.jwt.issuer-uri` /
+   `jwk-set-uri` in `application.yml` to point at it.
+4. In `SecurityConfig`, require authentication on `/api/**` and add
+   `.oauth2ResourceServer(oauth2 -> oauth2.jwt(...))`.
 
-### Disable Security (Development Only)
+## Known Limitations
 
-Set environment variable:
-```bash
-SPRING_PROFILES_ACTIVE=dev
-```
+This is a local demonstration / portfolio project, not a production deployment. Before
+using it for anything beyond that, be aware of:
+
+- **No authentication.** See [Security](#security) above. `/api/**` is wide open.
+- **Email notifications are simulated.** `EmailNotificationExecutor` builds a real
+  `SimpleMailMessage` but the actual `mailSender.send(message)` call is commented out, so
+  no email is ever sent. This avoids requiring real SMTP credentials for the demo. The
+  `DATA_PROCESSING` and `REPORT_GENERATION` executors are the ones intended to demonstrate
+  the end-to-end flow (see `scripts/verify.sh`); `DATA_BACKUP` and `CUSTOM` are similarly
+  simulated (no real filesystem/backup I/O).
+- **Retry backoff blocks the consumer thread.** `JobRetryConsumer` calls
+  `Thread.sleep()` on the Kafka listener thread while backing off. With the default
+  listener concurrency (1) this delays processing of other retries on the same partition
+  during the sleep. Fine for a demo; a production version should use a delayed-retry
+  topic or a scheduled re-publish instead of blocking the consumer.
+- **Duplicate-execution protection is best-effort.** Workers claim a Redis key per
+  `(executionId, retry)` before executing (see `JobExecutionService`), which protects
+  against Kafka redelivering the same offset to two workers during a rebalance. It does
+  not implement full exactly-once semantics.
+- **No Kubernetes manifests.** `docker-compose.yml` is the only deployment path exercised
+  and verified here, despite the autoscaling YAML snippet under "Scaling Strategy" above -
+  that snippet is illustrative, not a manifest that ships in this repo.
+- **`mvn verify` needs Docker.** The Testcontainers-based integration tests will fail to
+  even start without a working Docker daemon on the machine running them.
 
 ## Contributing
 

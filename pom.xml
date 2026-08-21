@@ -35,6 +35,7 @@
         <kafka.version>3.6.0</kafka.version>
         <redis.version>3.2.0</redis.version>
         <micrometer.version>1.12.0</micrometer.version>
+        <testcontainers.version>1.19.3</testcontainers.version>
     </properties>
 
     <dependencyManagement>
@@ -43,6 +44,14 @@
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -84,6 +93,20 @@
                             </exclude>
                         </excludes>
                     </configuration>
+                </plugin>
+                <!-- *IT.java classes (Testcontainers integration tests requiring a Docker
+                     daemon) run only on `mvn verify`, never on plain `mvn test`. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>

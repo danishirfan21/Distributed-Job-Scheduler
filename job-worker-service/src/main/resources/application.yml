@@ -60,6 +60,9 @@ management:
     tags:
       application: ${spring.application.name}
       worker-id: ${WORKER_ID:default}
+    distribution:
+      percentiles-histogram:
+        job.execution.time: true
 
 worker:
   id: ${WORKER_ID:worker-${random.uuid}}

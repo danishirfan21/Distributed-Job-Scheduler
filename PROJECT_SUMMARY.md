@@ -2,7 +2,7 @@
 
 ## Overview
 
-A production-ready, enterprise-grade distributed job scheduling system built with Spring Boot, featuring comprehensive job orchestration, DAG-based dependencies, and robust monitoring capabilities.
+A local demonstration of a distributed job scheduling system built with Spring Boot, featuring job orchestration, DAG-based dependencies, and monitoring. It is **not** production-ready as-is - see [README.md "Known Limitations"](README.md#known-limitations) (no authentication, simulated executors, etc.) before deploying it anywhere beyond a local machine.
 
 ## What Has Been Built
 
@@ -15,7 +15,6 @@ A production-ready, enterprise-grade distributed job scheduling system built wit
 - **Job Dispatcher:** Kafka-based asynchronous job dispatching
 - **State Management:** PostgreSQL persistence + Redis caching
 - **Distributed Locking:** Redis-based locking to prevent duplicate execution
-- **OAuth2 Security:** JWT-based authentication and authorization
 - **Metrics Export:** Prometheus metrics for monitoring
 
 #### Job Worker Service (Ports 8082, 8083)

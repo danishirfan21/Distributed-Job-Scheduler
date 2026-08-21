@@ -57,13 +57,6 @@ spring:
         spring.json.trusted.packages: "*"
       auto-offset-reset: earliest
 
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080/auth/realms/job-scheduler}
-          jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8080/auth/realms/job-scheduler/protocol/openid-connect/certs}
-
 server:
   port: ${SERVER_PORT:8081}
 

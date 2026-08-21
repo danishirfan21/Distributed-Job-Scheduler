@@ -87,6 +87,7 @@ services:
     depends_on:
       - job-scheduler-service
       - job-worker-1
+      - job-worker-2
 
   # Grafana
   grafana:

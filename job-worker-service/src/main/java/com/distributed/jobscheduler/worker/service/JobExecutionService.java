@@ -1,5 +1,6 @@
 package com.distributed.jobscheduler.worker.service;
 
+import com.distributed.jobscheduler.common.constants.RedisKeys;
 import com.distributed.jobscheduler.common.dto.JobExecutionDTO;
 import com.distributed.jobscheduler.common.dto.JobStatusUpdateDTO;
 import com.distributed.jobscheduler.common.enums.JobStatus;
@@ -9,10 +10,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -26,6 +29,7 @@ public class JobExecutionService {
     private final List<JobExecutor> jobExecutors;
     private final StatusReportingService statusReportingService;
     private final MeterRegistry meterRegistry;
+    private final RedisTemplate<String, String> redisTemplate;
     private final int jobTimeoutMinutes;
     private final Map<String, Future<?>> runningJobs = new ConcurrentHashMap<>();
 
@@ -35,13 +39,15 @@ public class JobExecutionService {
             @Value("${worker.job-timeout-minutes:30}") int jobTimeoutMinutes,
             List<JobExecutor> jobExecutors,
             StatusReportingService statusReportingService,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            RedisTemplate<String, String> redisTemplate) {
 
         this.workerId = workerId;
         this.jobTimeoutMinutes = jobTimeoutMinutes;
         this.jobExecutors = jobExecutors;
         this.statusReportingService = statusReportingService;
         this.meterRegistry = meterRegistry;
+        this.redisTemplate = redisTemplate;
         this.executorService = Executors.newFixedThreadPool(maxConcurrentJobs,
                 new ThreadFactory() {
                     private int count = 0;
@@ -56,6 +62,21 @@ public class JobExecutionService {
     }
 
     public void executeJob(JobExecutionDTO execution) {
+        // Guard against duplicate processing of the same delivery: Kafka only guarantees
+        // at-least-once delivery, so a consumer rebalance (or two workers briefly sharing
+        // a partition during a rebalance) can hand the same (executionId, retry) attempt
+        // to more than one worker. Only the worker that wins this Redis SETNX actually runs it.
+        String attemptKey = RedisKeys.jobAttempt(execution.getExecutionId(), execution.getCurrentRetry());
+        Boolean acquired = redisTemplate.opsForValue()
+                .setIfAbsent(attemptKey, workerId, Duration.ofMinutes(jobTimeoutMinutes + 5L));
+
+        if (!Boolean.TRUE.equals(acquired)) {
+            log.warn("Duplicate delivery detected, skipping: executionId={}, retry={}, alreadyClaimedBy={}",
+                    execution.getExecutionId(), execution.getCurrentRetry(),
+                    redisTemplate.opsForValue().get(attemptKey));
+            return;
+        }
+
         log.info("Submitting job for execution: executionId={}, type={}",
                 execution.getExecutionId(), execution.getType());
 

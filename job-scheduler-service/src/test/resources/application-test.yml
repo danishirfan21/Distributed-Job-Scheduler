@@ -18,18 +18,16 @@ spring:
     consumer:
       group-id: test-group
       auto-offset-reset: earliest
+    admin:
+      fail-fast: false
+      properties:
+        request.timeout.ms: 3000
+        default.api.timeout.ms: 3000
 
   data:
     redis:
       host: localhost
       port: 6379
-
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://localhost:8080/auth/realms/test
-          jwk-set-uri: http://localhost:8080/auth/realms/test/protocol/openid-connect/certs
 
 management:
   endpoints:

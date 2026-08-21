@@ -16,7 +16,6 @@ The Distributed Job Scheduler is a highly scalable, fault-tolerant system for or
 - Monitors system health and metrics
 
 **Key Features:**
-- OAuth2 authentication for secure access
 - Cron-based job scheduling
 - DAG cycle detection
 - Job versioning and history tracking
@@ -75,7 +74,7 @@ The Distributed Job Scheduler is a highly scalable, fault-tolerant system for or
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Client/Users                             │
 └────────────────────────┬────────────────────────────────────────┘
-                         │ REST API (OAuth2)
+                         │ REST API (no auth in this local demo)
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                  Job Scheduler Service                           │

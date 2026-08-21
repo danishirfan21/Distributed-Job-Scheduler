@@ -16,7 +16,7 @@ git clone <repository-url>
 cd distributed-job-scheduler
 
 # Start all services
-docker-compose up -d
+docker compose up -d
 ```
 
 Wait for all services to start (about 60 seconds).
@@ -25,7 +25,7 @@ Wait for all services to start (about 60 seconds).
 
 ```bash
 # Check all services are running
-docker-compose ps
+docker compose ps
 
 # Should see:
 # - postgres (healthy)
@@ -196,43 +196,42 @@ docker logs job-worker-2 -f
 
 ## Scaling Workers
 
-Need more throughput? Add more workers!
-
-```bash
-# Scale to 5 workers
-docker-compose up -d --scale job-worker-service=5
-```
+Need more throughput? `docker-compose.yml` ships two fixed worker instances
+(`job-worker-1`, `job-worker-2`) with their own container names and host ports, so
+`docker compose --scale` doesn't apply directly - see "Add More Workers" in
+[README.md](README.md#scaling-strategy) for how to add a third instance or make a
+service scalable.
 
 ## Common Operations
 
 ### List Running Containers
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 ### Stop the System
 ```bash
-docker-compose stop
+docker compose stop
 ```
 
 ### Start the System
 ```bash
-docker-compose start
+docker compose start
 ```
 
 ### View Service Logs
 ```bash
-docker-compose logs -f [service-name]
+docker compose logs -f [service-name]
 ```
 
 ### Restart a Service
 ```bash
-docker-compose restart [service-name]
+docker compose restart [service-name]
 ```
 
 ### Clean Up Everything
 ```bash
-docker-compose down -v  # Warning: This deletes all data!
+docker compose down -v  # Warning: This deletes all data!
 ```
 
 ## Troubleshooting
@@ -276,7 +275,7 @@ docker logs job-scheduler-service --tail 100
 
 ## Need Help?
 
-- Check the logs: `docker-compose logs -f`
+- Check the logs: `docker compose logs -f`
 - View health status: `/actuator/health`
 - Monitor metrics: http://localhost:9090 (Prometheus)
 - View dashboard: http://localhost:3000 (Grafana)

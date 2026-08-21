@@ -37,7 +37,7 @@ public class JobRetryConsumer {
         }
     }
 
-    private int calculateRetryDelay(JobExecutionDTO execution) {
+    int calculateRetryDelay(JobExecutionDTO execution) {
         // Exponential backoff: retryDelay * 2^(currentRetry - 1)
         // For example: 60s, 120s, 240s...
         int baseDelay = 60; // Default 60 seconds

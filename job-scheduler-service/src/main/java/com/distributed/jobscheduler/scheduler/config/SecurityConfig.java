@@ -2,12 +2,19 @@ package com.distributed.jobscheduler.scheduler.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 
+/**
+ * No identity provider (e.g. Keycloak) is bundled with this project's docker-compose stack,
+ * so OAuth2/JWT enforcement is intentionally not wired up here - it would make the REST API
+ * unusable out of the box. All endpoints are open. See README "Known Limitations" before
+ * using this as a starting point for a real deployment: put this service behind a real
+ * OAuth2 resource server config (issuer-uri/jwk-set-uri) and re-enable authentication on
+ * /api/** before exposing it outside a local machine.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -18,21 +25,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                // Allow actuator endpoints
-                .requestMatchers("/actuator/**").permitAll()
-                // Allow health check
-                .requestMatchers("/health").permitAll()
-                // Require authentication for all API endpoints
-                .requestMatchers("/api/**").authenticated()
-                // Allow everything else (can be restricted further)
-                .anyRequest().permitAll()
-            )
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtAuthenticationConverter(
-                    new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter()
-                ))
-            );
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
 
         return http.build();
     }
