@@ -15,6 +15,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
@@ -141,15 +142,17 @@ class SchedulerEndToEndIT {
         }
 
         // 4. Simulate the worker: publish RUNNING then COMPLETED to "job-status-update",
-        //    exactly as job-worker-service's StatusReportingService does.
+        //    exactly as job-worker-service's StatusReportingService does. The real
+        //    producer uses Spring's JsonSerializer, which stamps a __TypeId__ header so
+        //    the consumer's JsonDeserializer knows what class to deserialize into - a
+        //    plain StringSerializer producer has to add that header itself.
         try (KafkaProducer<String, String> producer = stringProducer()) {
             JobStatusUpdateDTO running = JobStatusUpdateDTO.builder()
                 .executionId(executionId)
                 .status(JobStatus.RUNNING)
                 .workerId("it-simulated-worker")
                 .build();
-            producer.send(new ProducerRecord<>(KafkaTopics.JOB_STATUS_UPDATE, executionId,
-                objectMapper.writeValueAsString(running))).get();
+            producer.send(jsonRecord(executionId, running)).get();
 
             Map<String, Object> result = new HashMap<>();
             result.put("recordsProcessed", 1000);
@@ -160,8 +163,7 @@ class SchedulerEndToEndIT {
                 .result(result)
                 .executionTimeMs(1234L)
                 .build();
-            producer.send(new ProducerRecord<>(KafkaTopics.JOB_STATUS_UPDATE, executionId,
-                objectMapper.writeValueAsString(completed))).get();
+            producer.send(jsonRecord(executionId, completed)).get();
         }
 
         // 5. Poll GET /api/v1/jobs/executions/{id} until the scheduler's own Kafka
@@ -187,6 +189,13 @@ class SchedulerEndToEndIT {
 
     private JsonNode readData(String body) throws Exception {
         return objectMapper.readTree(body).get("data");
+    }
+
+    private ProducerRecord<String, String> jsonRecord(String key, JobStatusUpdateDTO value) throws Exception {
+        ProducerRecord<String, String> record = new ProducerRecord<>(
+            KafkaTopics.JOB_STATUS_UPDATE, key, objectMapper.writeValueAsString(value));
+        record.headers().add(new RecordHeader("__TypeId__", JobStatusUpdateDTO.class.getName().getBytes()));
+        return record;
     }
 
     private ConsumerRecords<String, String> pollUntilRecords(KafkaConsumer<String, String> consumer) {

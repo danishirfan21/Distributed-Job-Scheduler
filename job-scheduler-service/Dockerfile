@@ -10,6 +10,10 @@ COPY pom.xml .
 COPY job-common/pom.xml job-common/
 COPY job-common/src job-common/src
 
+# The root pom.xml lists all 3 modules, so Maven's reactor needs every
+# module's pom.xml present to resolve - even ones this image doesn't build.
+COPY job-worker-service/pom.xml job-worker-service/
+
 # Copy scheduler service
 COPY job-scheduler-service/pom.xml job-scheduler-service/
 COPY job-scheduler-service/src job-scheduler-service/src

@@ -13,6 +13,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
@@ -84,8 +85,13 @@ class WorkerConsumeAndExecuteIT {
             .build();
 
         try (KafkaProducer<String, String> producer = stringProducer()) {
-            producer.send(new ProducerRecord<>(KafkaTopics.JOB_DISPATCH, executionId,
-                objectMapper.writeValueAsString(execution))).get();
+            ProducerRecord<String, String> record = new ProducerRecord<>(
+                KafkaTopics.JOB_DISPATCH, executionId, objectMapper.writeValueAsString(execution));
+            // Spring's JsonDeserializer on the consumer side needs this header (normally
+            // stamped automatically by Spring's JsonSerializer) to know what class to
+            // deserialize into.
+            record.headers().add(new RecordHeader("__TypeId__", JobExecutionDTO.class.getName().getBytes()));
+            producer.send(record).get();
         }
 
         List<JsonNode> statusUpdates = new ArrayList<>();
