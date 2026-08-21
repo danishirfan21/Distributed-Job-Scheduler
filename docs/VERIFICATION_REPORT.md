@@ -154,7 +154,9 @@ in this environment - see Section 4.
   effectiveness against an actual rebalance is only exercised by `WorkerConsumeAndExecuteIT`,
   which itself is unverified for the reason above).
 
-**Recommendation:** before relying on this as "known-good," run, on a machine with Docker:
+**Recommendation:** before relying on this as "known-good," run, on a machine with Docker
+(or in a GitHub Codespace via the included [`.devcontainer`](../.devcontainer/devcontainer.json),
+which provisions Docker-in-Docker for exactly this purpose):
 ```bash
 mvn verify
 docker compose up --build -d

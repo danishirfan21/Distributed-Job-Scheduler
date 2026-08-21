@@ -42,6 +42,22 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 - Java 17 (for local development)
 - Maven 3.9+ (for local development)
 
+### No Docker on your machine? Use GitHub Codespaces
+
+This repo includes a [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+(Java 17 + Docker-in-Docker). Open the repo in a Codespace (GitHub → **Code** →
+**Codespaces** → **Create codespace on main**), wait for it to build, then in the
+Codespace terminal:
+
+```bash
+./scripts/verify.sh
+```
+
+This gets you a real Docker daemon and runs the full build → `docker compose up --build`
+→ create job → execute → poll until `COMPLETED` flow end-to-end, with all output visible
+in the terminal - useful if you want to paste the results back for review, the way you
+would with any other project that needs Docker but your local machine doesn't have it.
+
 ### Running with Docker Compose
 
 1. **Clone the repository:**

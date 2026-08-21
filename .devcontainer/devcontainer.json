@@ -1,0 +1,22 @@
+{
+  "name": "Distributed Job Scheduler",
+  "image": "mcr.microsoft.com/devcontainers/java:1-17-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest"
+    }
+  },
+  "forwardPorts": [8081, 8082, 8083, 5432, 6379, 9092, 9090, 3000],
+  "portsAttributes": {
+    "8081": { "label": "Job Scheduler Service" },
+    "8082": { "label": "Job Worker 1" },
+    "8083": { "label": "Job Worker 2" },
+    "5432": { "label": "PostgreSQL" },
+    "6379": { "label": "Redis" },
+    "9092": { "label": "Kafka" },
+    "9090": { "label": "Prometheus" },
+    "3000": { "label": "Grafana" }
+  },
+  "postCreateCommand": "mvn -q -v",
+  "remoteUser": "vscode"
+}
