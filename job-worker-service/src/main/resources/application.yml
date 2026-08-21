@@ -60,6 +60,13 @@ management:
     # perfectly healthy, which would incorrectly fail liveness/readiness checks.
     kafka:
       enabled: false
+    # EmailNotificationExecutor deliberately simulates sending (no real SMTP configured -
+    # see README "Known Limitations"), so the auto-configured mail health indicator would
+    # try to authenticate against smtp.gmail.com with no credentials on every health check
+    # and fail permanently, not just transiently. Disabled since it doesn't reflect any
+    # real capability this service is meant to provide.
+    mail:
+      enabled: false
   metrics:
     export:
       prometheus:
