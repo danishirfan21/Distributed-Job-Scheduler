@@ -1,0 +1,54 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  unit-tests:
+    name: Unit tests (mvn test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: mvn clean test
+        run: mvn -B clean test
+
+  integration-tests:
+    name: Integration tests (mvn verify, Testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: mvn clean verify
+        run: mvn -B clean verify
+
+  end-to-end:
+    name: End-to-end (scripts/verify.sh, docker compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Run scripts/verify.sh
+        run: bash scripts/verify.sh --keep-up
+      - name: Dump service logs
+        if: always()
+        run: docker compose logs
+      - name: Tear down docker compose stack
+        if: always()
+        run: docker compose down -v
