@@ -61,7 +61,15 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Disabled deliberately: if a worker's consumer reaches Kafka before the scheduler's
+      # KafkaAdmin explicitly creates "job-dispatch"/"job-status-update"/"job-retry" with
+      # 10 partitions each, auto-create would instead create them with the broker default
+      # of 1 partition. The scheduler later detects the mismatch and expands the topic to
+      # 10 partitions, but any consumer group that already rebalanced against the
+      # 1-partition version doesn't get reassigned until its next metadata refresh (default
+      # 5 minutes) - so messages published to the new partitions sit unconsumed. Disabling
+      # auto-create forces topics to only ever be created once, correctly, by the scheduler.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     networks:
       - job-scheduler-network
     healthcheck:

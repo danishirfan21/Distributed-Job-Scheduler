@@ -26,6 +26,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+        allow.auto.create.topics: false
       auto-offset-reset: earliest
       max-poll-records: 10
     producer:
