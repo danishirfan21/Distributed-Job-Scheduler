@@ -53,6 +53,13 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  health:
+    # The auto-configured Kafka health indicator calls the broker's admin API on every
+    # /actuator/health hit. During cluster startup (partition leader election, consumer
+    # rebalancing) that call can be slow/fail for a while even though the app itself is
+    # perfectly healthy, which would incorrectly fail liveness/readiness checks.
+    kafka:
+      enabled: false
   metrics:
     export:
       prometheus:

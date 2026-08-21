@@ -65,6 +65,11 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  health:
+    # See job-worker-service/application.yml for why this is disabled: the Kafka admin
+    # health check is slow/unreliable during cluster startup and shouldn't gate liveness.
+    kafka:
+      enabled: false
   metrics:
     export:
       prometheus:

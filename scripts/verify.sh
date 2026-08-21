@@ -195,10 +195,13 @@ else
   fail "scheduler /actuator/prometheus missing jobs_created_total"
 fi
 
-if curl -s "$WORKER1_URL/actuator/prometheus" | grep -q "jobs_completed_total"; then
-  pass "worker-1 exposes jobs_completed_total on /actuator/prometheus"
+# Either worker instance may have processed the job above - job-dispatch's Kafka
+# consumer group load-balances across whichever worker happens to own that partition.
+if curl -s "$WORKER1_URL/actuator/prometheus" | grep -q "jobs_completed_total" \
+    || curl -s "$WORKER2_URL/actuator/prometheus" | grep -q "jobs_completed_total"; then
+  pass "a worker exposes jobs_completed_total on /actuator/prometheus"
 else
-  fail "worker-1 /actuator/prometheus missing jobs_completed_total"
+  fail "neither worker's /actuator/prometheus shows jobs_completed_total"
 fi
 
 # ---------------------------------------------------------------------------
