@@ -138,8 +138,9 @@ this purpose, since GitHub-hosted runners have an unrestricted Docker daemon. Se
   Dockerfile bug described below was first caught and fixed, ahead of the first CI run).
 
 ### Verified on GitHub Actions (real Docker daemon, `.github/workflows/verify.yml`)
-Four CI runs were needed to reach a fully green state - each failure was a real bug this
-review had not caught statically, not an infrastructure fluke. In order:
+Seven CI runs total, five of them failures - every failure was a real bug this review had
+not caught statically, not an infrastructure fluke, including one (run 6) surfaced by a
+completely unrelated docs-only push. In order:
 
 1. **Run 1** ([`4cac114`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/4cac114)-era workflow): `docker compose up --build` failed immediately for both
    images with `Child module .../pom.xml does not exist`. Both Dockerfiles only `COPY`ed
@@ -183,19 +184,47 @@ review had not caught statically, not an infrastructure fluke. In order:
    [`308d01a`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/308d01a):
    `management.health.mail.enabled=false`.
 6. **Run 5** ([`32519006790`](https://github.com/danishirfan21/Distributed-Job-Scheduler/actions/runs/32519006790)):
-   all three jobs (`unit-tests`, `integration-tests`, `end-to-end`) passed. This is the
-   first run that genuinely proves, on a real Docker daemon: `docker compose up --build`
+   all three jobs (`unit-tests`, `integration-tests`, `end-to-end`) passed for the first
+   time - genuinely proving, on a real Docker daemon, that `docker compose up --build`
    brings up all 8 services; `POST /api/v1/jobs` creates a job; `POST .../execute`
    dispatches it to a real Kafka topic; a real worker consumes it, executes it, and reports
    status back over Kafka; the scheduler persists the final state as `COMPLETED` in real
    PostgreSQL; and both services' `/actuator/prometheus` endpoints return real metrics.
+7. **Run 6** (triggered by [`0a7b3c3`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/0a7b3c3),
+   a documentation-only commit with zero code changes): `end-to-end` failed anyway. A
+   created/dispatched job stayed `QUEUED` forever - never consumed - despite the scheduler
+   successfully publishing it to `partition=5`. The raw scheduler log showed
+   `Topic 'job-dispatch' exists but has a different partition count: 1 not 10, increasing
+   if the broker supports it`, logged *after* both workers had already formed their
+   consumer group. Root cause: with `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`, a worker's
+   consumer reached Kafka before the scheduler's `KafkaAdmin` explicitly created the topic
+   with 10 partitions, so the broker auto-created it with its default of 1 partition
+   instead. The scheduler's `KafkaAdmin` later detected the mismatch and expanded the topic
+   to 10 partitions (Spring Kafka's documented behavior for an existing topic with fewer
+   partitions than a declared `NewTopic` bean requests) - but the worker's consumer group
+   had already rebalanced against the 1-partition version and doesn't get reassigned until
+   its next metadata refresh (5 minutes by default), so anything published to the newly
+   added partitions sat unconsumed indefinitely. This is a genuine, deterministic race tied
+   to container startup ordering, not flakiness - it happened to succeed in run 5 only
+   because the scheduler happened to win that race that time. **Fixed** in
+   [`944e786`](https://github.com/danishirfan21/Distributed-Job-Scheduler/commit/944e786)
+   by disabling `KAFKA_AUTO_CREATE_TOPICS_ENABLE` entirely (topics can now only ever be
+   created once, explicitly, by the scheduler) plus `allow.auto.create.topics=false` on
+   both services' consumers as defense-in-depth.
+8. **Run 7** ([`32521524124`](https://github.com/danishirfan21/Distributed-Job-Scheduler/actions/runs/32521524124)):
+   all three jobs passed again, this time in 3m18s total for `end-to-end` (down from ~9
+   minutes in run 5) - the fastest run yet, consistent with removing a source of wasted
+   retry time rather than just papering over a symptom.
 
 ### Still not independently reproduced outside CI
 - Grafana actually rendering the dashboard against live data (no step in `verify.sh`
   checks Grafana specifically - Prometheus scraping both services was confirmed instead).
-- Kafka partition-rebalance / duplicate-delivery behavior under sustained load (the Redis
-  dedup logic is unit-tested with mocks and exercised once by `WorkerConsumeAndExecuteIT`,
-  but not stress-tested against a real rebalance storm).
+- Kafka rebalance behavior under *sustained* load (many concurrent jobs, workers scaling
+  up/down mid-flight). Run 6 proved that a one-off topic-partition race at startup is a
+  real risk class in this codebase and fixed the specific instance found; it did not
+  stress-test rebalancing under load, so similar-shaped bugs elsewhere remain plausible.
+  The Redis dedup logic is unit-tested with mocks and exercised once (a single job) by
+  `WorkerConsumeAndExecuteIT`, not under a real rebalance storm.
 
 **To reproduce locally** on a machine with a working Docker daemon:
 ```bash
@@ -219,7 +248,7 @@ Docker-enabled runners.
 - `job-worker-service/src/main/java/.../service/JobExecutionService.java`
 - `job-worker-service/src/main/java/.../consumer/JobRetryConsumer.java`
 - `job-worker-service/src/main/resources/application.yml` (CI-discovered fixes: mail/kafka
-  health indicators)
+  health indicators, `allow.auto.create.topics=false`)
 - `job-worker-service/pom.xml` (CI-discovered fix: missing spring-boot-starter-web)
 - `job-worker-service/Dockerfile` (CI-discovered fix: missing sibling module pom.xml)
 - `job-worker-service/src/test/java/.../JobExecutionServiceTest.java` (new)
@@ -227,8 +256,12 @@ Docker-enabled runners.
 - `job-worker-service/src/test/java/.../WorkerConsumeAndExecuteIT.java` (new; CI-discovered
   fix: missing `__TypeId__` Kafka header)
 - `job-common/src/main/java/.../constants/RedisKeys.java`
-- `pom.xml`
-- `docker-compose.yml`
+- `pom.xml` (also: removed unused `mapstruct`/`spring-cloud-dependencies` declarations and
+  dead `kafka.version`/`redis.version`/`micrometer.version` properties during the portfolio
+  cleanup pass - none were ever referenced by any module)
+- `docker-compose.yml` (CI-discovered fix: `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false`)
+- `job-scheduler-service/src/main/resources/application.yml` (`allow.auto.create.topics=false`)
+- `LICENSE` (new - repo had none despite README claiming MIT)
 - `scripts/verify.sh` (new; CI-discovered fix: worker Prometheus check assumed worker-1
   specifically would process the job)
 - `.github/workflows/verify.yml` (new - runs unit tests, Testcontainers integration tests,

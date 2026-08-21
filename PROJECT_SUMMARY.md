@@ -395,18 +395,16 @@ This project demonstrates:
 
 ## Conclusion
 
-This Distributed Job Scheduler is a fully functional, production-ready system that demonstrates enterprise-level software engineering practices. It can be used as:
+This Distributed Job Scheduler is a genuinely functional system - verified end-to-end in
+CI against real PostgreSQL, Kafka, and Redis (see
+[docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md)) - but it is **not**
+production-ready as shipped. See [README.md "Known Limitations"](README.md#known-limitations)
+before deploying it beyond a local machine. It's best suited as:
 
 1. **Learning Resource:** Study microservices, distributed systems, and Spring Boot
 2. **Starting Point:** Fork and extend for your own job scheduling needs
-3. **Portfolio Project:** Showcase your skills in system design and implementation
-4. **Production System:** Deploy and use for real job scheduling requirements (with appropriate hardening)
+3. **Portfolio Project:** Showcase system design and implementation skills
 
-The system is designed to be:
-- **Scalable:** Horizontal and vertical scaling support
-- **Reliable:** Fault-tolerant with retry mechanisms
-- **Observable:** Comprehensive monitoring and logging
-- **Maintainable:** Well-documented and tested
-- **Extensible:** Easy to add new job types and features
-
-Happy coding! 🚀
+Turning it into a production system would require, at minimum, real authentication
+(see "Security" in README.md), real SMTP/backup integrations in place of the current
+simulated executors, and load/rebalance testing beyond what CI currently covers.

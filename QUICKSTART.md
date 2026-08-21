@@ -12,8 +12,8 @@ Get the Distributed Job Scheduler up and running in 5 minutes!
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd distributed-job-scheduler
+git clone https://github.com/danishirfan21/Distributed-Job-Scheduler.git
+cd Distributed-Job-Scheduler
 
 # Start all services
 docker compose up -d

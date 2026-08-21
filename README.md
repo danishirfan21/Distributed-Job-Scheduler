@@ -1,6 +1,60 @@
 # Distributed Job Scheduler
 
-A highly scalable, fault-tolerant distributed job scheduling system built with Spring Boot, similar to Apache Airflow, featuring DAG-based job dependencies, multi-threaded execution, and comprehensive monitoring.
+[![Verify](https://github.com/danishirfan21/Distributed-Job-Scheduler/actions/workflows/verify.yml/badge.svg)](https://github.com/danishirfan21/Distributed-Job-Scheduler/actions/workflows/verify.yml)
+
+A distributed job scheduling system (scheduler + worker pool, similar in spirit to Apache
+Airflow) built with **Java 17**, **Spring Boot**, **Apache Kafka**, **PostgreSQL**, **Redis**,
+**Docker**, and **Prometheus/Grafana**. Jobs are created and dispatched through a REST API,
+executed by a horizontally-scalable worker pool over Kafka, retried automatically on
+failure, and protected against duplicate execution via a Redis-based dedup lock. The full
+distributed flow - REST API → Kafka dispatch → worker consumption → execution → status
+reported back → persisted as `COMPLETED` - is verified end-to-end in CI against real
+PostgreSQL, Kafka, and Redis, not just unit-tested with mocks. See
+[What Is Actually Verified](#what-is-actually-verified) below.
+
+## Architecture
+
+```
+Client
+  |
+  v
+Scheduler Service  <---------------------------------------+
+  |                                                          |
+  +--> PostgreSQL (jobs, executions)                         |
+  |                                                          |
+  +--> Kafka: job-dispatch -----> Worker Pool (N instances)  |
+                                       |                     |
+                                       +--> Redis (dedup /   |
+                                       |     execution lock) |
+                                       |                     |
+                                       +--> Job Executor     |
+                                       |                     |
+                                       +--> Kafka: status ---+
+                                             updates
+
+Both services also expose /actuator/prometheus, scraped by:
+Prometheus ---> Grafana (dashboards)
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a more detailed breakdown of each component.
+
+## What Is Actually Verified
+
+This isn't a claim taken on faith - every item below is a step in
+[`.github/workflows/verify.yml`](.github/workflows/verify.yml), which runs on a real
+Docker daemon on every push:
+
+- Maven build succeeds and all unit tests pass
+- Testcontainers integration tests pass against real PostgreSQL, Kafka, and Redis
+- `docker compose up --build` brings up the full 8-service stack
+- A job can be created through the REST API and persisted in PostgreSQL
+- The scheduler dispatches it to a real Kafka topic
+- A real worker consumes it, executes it, and publishes a status update back over Kafka
+- The scheduler persists the final state as `COMPLETED`
+- Both services' `/actuator/prometheus` endpoints expose real metrics
+
+Full details, including every bug this verification process caught and fixed, are in
+[docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md).
 
 ## Features
 
@@ -8,21 +62,11 @@ A highly scalable, fault-tolerant distributed job scheduling system built with S
 - **DAG Support:** Define job dependencies with automatic cycle detection
 - **Cron Scheduling:** Schedule jobs using cron expressions
 - **Retry Logic:** Automatic retry with exponential backoff
-- **Distributed Locking:** Redis-based locking to prevent duplicate execution
+- **Duplicate-Execution Protection:** Redis-based locking and per-attempt dedup
 - **Multi-threaded Execution:** Parallel job execution using Java ExecutorService
 - **REST API:** Comprehensive APIs for job management (no authentication in this local demo - see [Known Limitations](#known-limitations))
 - **Monitoring:** Prometheus metrics with Grafana dashboards
 - **Fault Tolerance:** Graceful handling of component failures
-
-## Architecture
-
-The system consists of three main components:
-
-1. **Job Scheduler Service:** Manages job definitions, validates DAGs, and dispatches jobs
-2. **Job Worker Service:** Executes jobs in parallel and reports status
-3. **Infrastructure:** PostgreSQL, Redis, Kafka, Prometheus, Grafana
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 ## Technology Stack
 
@@ -32,7 +76,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 - **Message Queue:** Apache Kafka 3.6
 - **Monitoring:** Prometheus + Grafana
 - **Containerization:** Docker, Docker Compose
-- **Testing:** JUnit 5, Mockito, Spring Boot Test
+- **Testing:** JUnit 5, Mockito, Spring Boot Test, Testcontainers
 
 ## Quick Start
 
@@ -59,8 +103,8 @@ the **Actions** tab - no local Docker required.
 
 1. **Clone the repository:**
 ```bash
-git clone <repository-url>
-cd distributed-job-scheduler
+git clone https://github.com/danishirfan21/Distributed-Job-Scheduler.git
+cd Distributed-Job-Scheduler
 ```
 
 2. **Start all services:**
@@ -292,6 +336,40 @@ and confirms Prometheus metrics are populated. Exits non-zero on any failure. Pa
 `--skip-build` or `--skip-docker` to reuse an already-built/-running stack, or `--keep-up`
 to leave the containers running afterward for manual poking.
 
+## Interesting Bugs Found During Verification
+
+Getting `.github/workflows/verify.yml` to a clean green run took 7 CI iterations, each
+failure a real bug the initial code review and local unit tests had missed. The full
+writeup, including exact commits and log excerpts, is in
+[docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md); the short version:
+
+1. **Broken multi-module Docker builds.** Both Dockerfiles only copied their own module's
+   `pom.xml` plus `job-common`, but the root `pom.xml` lists all 3 modules - Maven's
+   reactor needs every listed module's `pom.xml` present just to parse, so
+   `docker compose up --build` failed immediately for both images.
+2. **Missing Kafka type headers in the integration tests.** The new Testcontainers tests
+   published raw JSON to simulate the real services, but Spring's `JsonDeserializer` needs
+   a `__TypeId__` header (normally added by Spring's own serializer) to know what class to
+   deserialize into - every message was a poison pill the consumer retried forever.
+3. **The worker had no web server at all.** `job-worker-service`'s `pom.xml` was missing
+   `spring-boot-starter-web` entirely, so `/actuator/health` and `/actuator/prometheus`
+   were never reachable - not slow, nonexistent. Kafka consumption still worked because it
+   doesn't need HTTP.
+4. **A permanently broken health indicator.** With the web server fixed, `/actuator/health`
+   still failed - because Actuator's mail health indicator was making a real SMTP handshake
+   against `smtp.gmail.com` (no credentials configured, since email sending is deliberately
+   simulated) on every single check.
+5. **A Kafka topic-partition race** (the most interesting one): with
+   `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`, a worker's consumer could reach Kafka before the
+   scheduler's `KafkaAdmin` explicitly created `job-dispatch` with 10 partitions, causing
+   the broker to auto-create it with its default of 1 partition instead. The scheduler
+   later detected the mismatch and expanded the topic to 10 partitions, but the worker's
+   consumer group had already formed its assignment around the 1-partition version and
+   doesn't get reassigned until its next metadata refresh (5 minutes by default) - so jobs
+   published to any of the newly-added partitions sat unconsumed indefinitely, stuck at
+   `QUEUED`. The fix was to disable auto-topic-creation entirely and let the scheduler be
+   the single source of truth for topic configuration.
+
 ## Monitoring
 
 ### Prometheus Metrics
@@ -518,6 +596,19 @@ using it for anything beyond that, be aware of:
   that snippet is illustrative, not a manifest that ships in this repo.
 - **`mvn verify` needs Docker.** The Testcontainers-based integration tests will fail to
   even start without a working Docker daemon on the machine running them.
+- **Not deployed anywhere.** Everything described here has been verified against
+  `docker compose` on a CI runner, not against a real cloud environment (AWS/GCP/Azure/
+  Kubernetes). `DEPLOYMENT_FREE.md` documents one path to a free-tier cloud deployment, but
+  that path itself is undocumented in CI and not verified here.
+- **Grafana rendering isn't CI-tested.** CI confirms both services' `/actuator/prometheus`
+  endpoints expose real metrics that Prometheus can scrape, but nothing automated checks
+  that the Grafana dashboard JSON actually renders those metrics correctly in the UI.
+- **Load and sustained-rebalance behavior is largely unverified.** `verify.sh` and the
+  integration tests exercise a single job end-to-end, not many jobs under concurrent load
+  or a live rebalance triggered by scaling workers mid-flight. The Kafka topic-partition
+  race described above was only found because a real rebalance happened to occur during a
+  CI run - it's plausible that similar classes of bugs remain undiscovered under sustained
+  load.
 
 ## Contributing
 
@@ -533,6 +624,5 @@ MIT License - see LICENSE file for details
 ## Support
 
 For issues and questions:
-- GitHub Issues: [Link to issues]
+- [GitHub Issues](https://github.com/danishirfan21/Distributed-Job-Scheduler/issues)
 - Documentation: [ARCHITECTURE.md](ARCHITECTURE.md)
-- Email: support@example.com
